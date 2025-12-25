@@ -28,6 +28,7 @@ export interface Locker {
   status: LockerStatus;
   currentUserId?: string;
   activeBookingId?: string;
+  isLocked?: boolean; // Physical lock status (true = locked, false = unlocked)
 }
 
 export interface Booking {
@@ -221,10 +222,24 @@ export const updateUser = async (
   }
 };
 
+export const toggleLockerLock = async (
+  lockerId: string,
+  isLocked: boolean
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const lockerRef = doc(db, "lockers", lockerId);
+    await updateDoc(lockerRef, { isLocked });
+    return { success: true };
+  } catch (e: any) {
+    console.error("Toggle lock failed:", e);
+    return { success: false, error: e.message };
+  }
+};
+
 // Seed function for Admin
 export const seedLockers = async () => {
   const batch = writeBatch(db);
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 2; i++) {
     const lockerRef = doc(collection(db, "lockers")); // Auto-ID or specific? Let's use auto for now, or named.
     // Actually, named IDs like 'l-1' are easier to read but random is cleaner for DB.
     // Let's stick with auto-id but track number.

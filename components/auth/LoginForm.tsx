@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/card";
 import { AlertCircle, Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { motion } from "framer-motion";
 
 export default function LoginForm() {
   const {
@@ -31,20 +30,21 @@ export default function LoginForm() {
   } = useLoginForm();
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
+    <div
+      data-aos="fade-up"
+      data-aos-duration="800"
       className="w-full px-4 sm:px-0"
     >
       <div className="mb-8 text-center space-y-2">
-        <h1 className="text-3xl font-extrabold tracking-tighter sm:text-4xl text-black dark:text-white">
-          Smart
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-500 to-neutral-800 dark:from-neutral-400 dark:to-white">
-            Locker
-          </span>
-          .
-        </h1>
+        <Link href="/">
+          <h1 className="text-3xl font-extrabold tracking-tighter sm:text-4xl text-black dark:text-white cursor-pointer inline-block">
+            Smart
+            <span className="text-neutral-600 dark:text-neutral-400">
+              Locker
+            </span>
+            .
+          </h1>
+        </Link>
       </div>
 
       <Card className="w-full max-w-sm sm:max-w-md mx-auto shadow-2xl border-0 sm:border sm:border-neutral-200 dark:sm:border-neutral-800 bg-white/50 dark:bg-black/50 backdrop-blur-xl">
@@ -106,21 +106,14 @@ export default function LoginForm() {
             </div>
 
             {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
+              <Alert
+                variant="destructive"
+                className="bg-red-50/50 dark:bg-red-900/10 border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 pl-12"
               >
-                <Alert
-                  variant="destructive"
-                  className="bg-red-50/50 dark:bg-red-900/10 border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 pl-12"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              </motion.div>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
 
             <Button
@@ -154,6 +147,6 @@ export default function LoginForm() {
           </div>
         </CardFooter>
       </Card>
-    </motion.div>
+    </div>
   );
 }

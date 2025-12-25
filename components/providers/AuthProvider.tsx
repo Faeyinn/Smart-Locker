@@ -69,9 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
 
     const publicPaths = ["/login", "/register", "/"];
+    const authRedirectPaths = ["/login", "/register"]; // Only redirect from these if logged in
     const isPublicPath = publicPaths.includes(pathname);
+    const shouldRedirectIfAuth = authRedirectPaths.includes(pathname);
 
-    if (user && isPublicPath && !isRegistering.current) {
+    if (user && shouldRedirectIfAuth && !isRegistering.current) {
       if (user.role === "admin") {
         router.push("/admin");
       } else {

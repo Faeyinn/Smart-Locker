@@ -18,13 +18,15 @@ export default function ProfilePage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-neutral-100 dark:bg-neutral-950 pb-24">
-      <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 p-6 pt-12">
-        <h1 className="text-2xl font-bold">My Profile</h1>
-        <p className="text-neutral-500">Manage your account settings</p>
+    <div className="space-y-6 pt-6">
+      <div className="space-y-0.5" data-aos="fade-down" data-aos-duration="800">
+        <h2 className="text-2xl font-bold tracking-tight">Profile</h2>
+        <p className="text-muted-foreground">
+          Manage your account settings and preferences.
+        </p>
       </div>
-      
-      <div className="p-6 max-w-md mx-auto">
+
+      <div data-aos="fade-up" data-aos-duration="800" data-aos-delay="100">
         <ProfileForm />
       </div>
     </div>
