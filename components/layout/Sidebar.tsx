@@ -28,11 +28,6 @@ export default function Sidebar() {
       icon: LayoutGrid,
     },
     {
-      href: "/ticket",
-      label: "My Ticket",
-      icon: Ticket,
-    },
-    {
       href: "/history",
       label: "History",
       icon: History,

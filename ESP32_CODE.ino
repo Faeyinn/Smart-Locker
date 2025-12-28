@@ -1,60 +1,58 @@
-#include "esp_camera.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "ESP32QRCodeReader.h"
 
 /* ================= WIFI ================= */
-const char* ssid = "NAMA_WIFI";
-const char* password = "PASSWORD_WIFI";
+#define RELAY_LOCKER_1 25
+#define RELAY_LOCKER_2 26
+#define SERIAL2_BAUD 9600
 
-/* ============ API ENDPOINT URL ========= */
-// Ganti dengan URL Next.js app Anda
-// Untuk production: https://your-domain.com/api/verify-qr
-// Untuk local testing (ngrok): https://your-ngrok-url.ngrok.io/api/verify-qr
-const char* serverUrl = "https://YOUR_DOMAIN.com/api/verify-qr";
+const char* ssid = "UNAND";
+const char* password = "HardiknasDiAndalas";
 
-/* ================= GPIO ================= */
-#define RELAY_LOCKER_1 12
-#define RELAY_LOCKER_2 13
+const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
+const char* pollUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/check-commands";
+unsigned long lastPollTime = 0;
+const long pollInterval = 2000; // Poll every 2 seconds
 
-/* ============ QR READER ================= */
-ESP32QRCodeReader qrReader(CAMERA_MODEL_AI_THINKER);
-
-/* ======================================== */
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  Serial2.begin(SERIAL2_BAUD, SERIAL_8N1, 16, 17);
+
   pinMode(RELAY_LOCKER_1, OUTPUT);
   pinMode(RELAY_LOCKER_2, OUTPUT);
 
-  // Initialize relays to CLOSED state (HIGH)
-  // Adjust based on your relay module type (HIGH/LOW trigger)
+  // Initialize relays ke state NC (Normally Closed) - HIGH = solenoid mendapat 12V
+  // Relay aktif LOW, jadi HIGH = relay OFF = solenoid ON (NC) - Wait, logic below says LOW=Open.
+  // Assuming LOW = Active = Open (Solenoid Retract)
   digitalWrite(RELAY_LOCKER_1, HIGH);
   digitalWrite(RELAY_LOCKER_2, HIGH);
 
   connectWiFi();
-  startCamera();
-  qrReader.setup();
-  qrReader.begin();
 
-  Serial.println("ESP32-CAM READY - Scan QR Code...");
+  Serial.println("ESP32 READY - Waiting for QR code or Web Commands...");
 }
 
-/* ======================================== */
 void loop() {
-  struct QRCodeData qrData;
-
-  if (qrReader.receiveQrCode(&qrData, 100)) {
-    if (qrData.valid) {
-      String token = String((char*)qrData.payload);
-      Serial.println("QR Code Detected: " + token);
-
+  // 1. Baca data QR code dari ESP32-CAM via Serial2
+  if (Serial2.available() > 0) {
+    String token = Serial2.readStringUntil('\n');
+    token.trim(); // Hapus whitespace
+    
+    if (token.length() > 0) {
+      Serial.println("QR Code Received from ESP32-CAM: " + token);
       sendTokenToServer(token);
-      delay(3000); // Anti double scan - wait 3 seconds
+      delay(3000); // Anti double scan
     }
+  }
+
+  // 2. Poll Server for Web Commands
+  if (millis() - lastPollTime >= pollInterval) {
+    lastPollTime = millis();
+    checkCommands();
   }
 }
 
@@ -81,50 +79,13 @@ void connectWiFi() {
   }
 }
 
-/* ============= CAMERA =================== */
-void startCamera() {
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer   = LEDC_TIMER_0;
-  config.pin_d0       = 5;
-  config.pin_d1       = 18;
-  config.pin_d2       = 19;
-  config.pin_d3       = 21;
-  config.pin_d4       = 36;
-  config.pin_d5       = 39;
-  config.pin_d6       = 34;
-  config.pin_d7       = 35;
-  config.pin_xclk     = 0;
-  config.pin_pclk     = 22;
-  config.pin_vsync    = 25;
-  config.pin_href     = 23;
-  config.pin_sccb_sda = 26;
-  config.pin_sccb_scl = 27;
-  config.pin_pwdn     = 32;
-  config.pin_reset    = -1;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_GRAYSCALE;
-  config.frame_size   = FRAMESIZE_QVGA;
-  config.jpeg_quality = 12;
-  config.fb_count     = 1;
-
-  // Camera init
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
-  }
-  Serial.println("Camera initialized successfully");
-}
-
 /* ========= SEND TOKEN TO SERVER ========= */
 void sendTokenToServer(String token) {
   WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate validation (use with caution in production)
+  client.setInsecure(); // Skip certificate validation
 
   HTTPClient https;
   
-  Serial.println("Connecting to server...");
   if (!https.begin(client, serverUrl)) {
     Serial.println("Connection failed!");
     return;
@@ -132,13 +93,12 @@ void sendTokenToServer(String token) {
 
   https.addHeader("Content-Type", "application/json");
 
-  // Create JSON payload
   StaticJsonDocument<200> doc;
   doc["token"] = token;
 
   String payload;
   serializeJson(doc, payload);
-  Serial.println("Sending: " + payload);
+  Serial.println("Sending QR: " + payload);
 
   int httpCode = https.POST(payload);
 
@@ -146,16 +106,35 @@ void sendTokenToServer(String token) {
     String response = https.getString();
     Serial.println("Response: " + response);
     handleResponse(response);
-  } else if (httpCode == 404) {
-    Serial.println("Error: Invalid or expired QR code");
-    // Optional: Add LED blink or buzzer here
   } else {
     Serial.println("Error: HTTP " + String(httpCode));
-    String errorResponse = https.getString();
-    Serial.println("Response: " + errorResponse);
   }
 
   https.end();
+}
+
+/* ========= CHECK COMMANDS ============= */
+void checkCommands() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  HTTPClient https;
+  
+  if (https.begin(client, pollUrl)) {
+    int httpCode = https.GET();
+    
+    if (httpCode == 200) {
+      String response = https.getString();
+      // Only print if action is not NONE to avoid spamming serial
+      if (response.indexOf("NONE") == -1) { 
+        Serial.println("Poll Response: " + response);
+        handleResponse(response);
+      }
+    }
+    https.end();
+  }
 }
 
 /* ========== HANDLE RESPONSE ============= */
@@ -169,37 +148,37 @@ void handleResponse(String response) {
     return;
   }
 
-  String action = doc["action"] | "";
+  String action = doc["action"] | "NONE";
   int lockerId = doc["lockerId"] | 0;
 
-  if (action == "OPEN" && lockerId > 0) {
-    Serial.println("Opening Locker " + String(lockerId));
-    
-    if (lockerId == 1) {
-      openLocker(RELAY_LOCKER_1);
-    } else if (lockerId == 2) {
-      openLocker(RELAY_LOCKER_2);
-    } else {
-      Serial.println("Invalid locker ID: " + String(lockerId));
+  if (action == "NONE") return;
+
+  Serial.println("Action: " + action + " for Locker " + String(lockerId));
+
+  int relayPin = -1;
+  if (lockerId == 1) relayPin = RELAY_LOCKER_1;
+  else if (lockerId == 2) relayPin = RELAY_LOCKER_2;
+
+  if (relayPin != -1) {
+    if (action == "OPEN") {
+      controlRelay(relayPin, true); // OPEN
+    } else if (action == "CLOSE") {
+      controlRelay(relayPin, false); // CLOSE
     }
   } else {
-    Serial.println("Invalid response format");
+    Serial.println("Invalid locker ID");
   }
 }
 
-/* ============ OPEN LOCKER =============== */
-void openLocker(int relayPin) {
-  Serial.println("Opening locker on pin " + String(relayPin) + "...");
-  
-  // Activate relay (LOW = relay ON for most modules)
-  // If your relay is HIGH trigger, change LOW to HIGH
-  digitalWrite(relayPin, LOW);
-  
-  delay(5000); // Locker open for 5 seconds
-  
-  // Deactivate relay (HIGH = relay OFF)
-  digitalWrite(relayPin, HIGH);
-  
-  Serial.println("Locker closed");
+/* ============ CONTROL RELAY ============= */
+void controlRelay(int relayPin, bool open) {
+  if (open) {
+    Serial.println("Opening Relay...");
+    digitalWrite(relayPin, LOW); // Active LOW -> ON -> Open
+  } else {
+    Serial.println("Closing Relay...");
+    digitalWrite(relayPin, HIGH); // OFF -> Close
+  }
+  // Note: If using Solenoid, ensure it doesn't overheat if kept OPEN (LOW) for too long.
 }
 

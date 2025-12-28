@@ -2,16 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { Locker, getLockers, seedLockers } from "@/lib/data";
-import { IoTLockerCard } from "@/components/locker/IoTLockerCard";
+import { UserLockerCard } from "@/components/locker/UserLockerCard";
 import {
   Loader2,
   RefreshCcw,
-  Server,
-  ShieldCheck,
-  Activity,
+  Box,
+  Lock,
+  Package,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function DashboardPage() {
   const [lockers, setLockers] = useState<Locker[]>([]);
@@ -32,7 +38,7 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       const data = await getLockers();
-      setLockers(data.slice(0, 2));
+      setLockers([...data]);
     } finally {
       setLoading(false);
     }
@@ -42,8 +48,9 @@ export default function DashboardPage() {
     fetchLockers();
   }, []);
 
-  const activeDevices = lockers.length;
-  const lockedDevices = lockers.filter((l) => l.isLocked !== false).length;
+  const availableLockers = lockers.filter((l) => l.status === "available").length;
+  const bookedLockers = lockers.filter((l) => l.status === "booked").length;
+  const lockedLockers = lockers.filter((l) => l.isLocked !== false).length;
 
   return (
     <div className="space-y-8 pt-6 pb-20">
@@ -54,140 +61,151 @@ export default function DashboardPage() {
       >
         <div className="space-y-2">
           <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">
-            IoT Dashboard
+            Dashboard
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
-            Monitor and control your SmartLocker fleet geographically. Real-time
-            status updates and physical access control.
+            Kelola loker Anda dengan mudah. Generate QR code untuk akses atau kontrol langsung dari web.
           </p>
         </div>
         <div className="flex gap-2">
           <Button
             onClick={fetchLockers}
             variant="outline"
-            className="h-11 px-6 shadow-sm"
+            className="h-11 px-6 shadow-sm hover:shadow-md transition-all"
+            disabled={loading}
           >
             <RefreshCcw
               className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
             />
-            Sync Status
+            Refresh
           </Button>
         </div>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4" data-aos="fade-up">
-        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" data-aos="fade-up">
+        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Total Loker</CardTitle>
+            <Package className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeDevices} Units</div>
-            <p className="text-xs text-muted-foreground">
-              Connected to IoT Gateway
+            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{lockers.length}</div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Semua unit loker
             </p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
+
+        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">System Status</CardTitle>
-            <Activity className="h-4 w-4 text-neutral-500" />
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Tersedia</CardTitle>
+            <Box className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              Online
+              {availableLockers}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Latency: {Math.floor(Math.random() * 20 + 10)}ms
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Siap digunakan
             </p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
+
+        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Security</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-neutral-500" />
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Terpakai</CardTitle>
+            <Users className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {lockedDevices}/{activeDevices} Locked
+            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+              {bookedLockers}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Physical security active
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Sedang digunakan
             </p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
+
+        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Available</CardTitle>
-            <Activity className="h-4 w-4 text-neutral-500" />
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Terkunci</CardTitle>
+            <Lock className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {lockers.filter((l) => l.status === "available").length}/{activeDevices}
+            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+              {lockedLockers}/{lockers.length}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Lockers available for booking
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Status keamanan aktif
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Content */}
-      <div className="space-y-4">
-        <h2
-          className="text-xl font-semibold tracking-tight"
-          data-aos="fade-right"
-        >
-          Device Control
-        </h2>
-
-        {loading && lockers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4 bg-muted/20 rounded-xl border border-dashed">
-            <Loader2 className="w-10 h-10 animate-spin text-primary" />
-            <p className="text-muted-foreground font-medium">
-              Scanning network for devices...
+      {/* Main Content - Locker Grid */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2
+              className="text-2xl font-bold tracking-tight"
+              data-aos="fade-right"
+            >
+              Daftar Loker
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Pilih loker untuk melihat detail dan kelola akses
             </p>
           </div>
+        </div>
+
+        {loading && lockers.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center h-64 gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <p className="text-muted-foreground font-medium">
+                Memuat daftar loker...
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
             {lockers.map((locker, index) => (
               <div
                 key={locker.id}
                 data-aos="fade-up"
                 data-aos-delay={index * 100}
+                className="transition-transform duration-300 hover:scale-[1.02]"
               >
-                <IoTLockerCard locker={locker} onUpdate={fetchLockers} />
+                <UserLockerCard locker={locker} onUpdate={fetchLockers} />
               </div>
             ))}
 
             {lockers.length === 0 && !loading && (
-              <div
-                className="col-span-full flex flex-col items-center justify-center py-16 bg-muted/20 rounded-3xl border border-dashed space-y-6"
-                data-aos="zoom-in"
-              >
-                <div className="p-4 bg-background rounded-full shadow-sm">
-                  <Server className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <div className="text-center space-y-2">
-                  <h3 className="text-lg font-semibold">No Devices Found</h3>
-                  <p className="text-muted-foreground max-w-sm mx-auto">
-                    The system database appears to be empty or connection was
-                    lost.
-                  </p>
-                </div>
-                <Button
-                  onClick={handleInitialize}
-                  disabled={isSeeding}
-                  size="lg"
-                  className="px-8 shadow-lg hover:shadow-xl transition-all"
-                >
-                  {isSeeding && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Initialize Demo Data
-                </Button>
-              </div>
+              <Card className="col-span-full border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-16 space-y-6">
+                  <div className="p-4 bg-muted/50 rounded-full">
+                    <Box className="w-10 h-10 text-muted-foreground" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold">Tidak Ada Loker</h3>
+                    <p className="text-muted-foreground max-w-sm mx-auto">
+                      Database loker masih kosong. Inisialisasi data demo untuk memulai.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleInitialize}
+                    disabled={isSeeding}
+                    size="lg"
+                    className="px-8 shadow-lg hover:shadow-xl transition-all"
+                  >
+                    {isSeeding && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Inisialisasi Data Demo
+                  </Button>
+                </CardContent>
+              </Card>
             )}
           </div>
         )}

@@ -20,7 +20,7 @@ export interface User {
   role: UserRole;
 }
 
-export type LockerStatus = "available" | "booked" | "maintenance";
+export type LockerStatus = "available" | "booked" | "maintenance" | "reserved";
 
 export interface Locker {
   id: string;
@@ -29,6 +29,7 @@ export interface Locker {
   currentUserId?: string;
   activeBookingId?: string;
   isLocked?: boolean; // Physical lock status (true = locked, false = unlocked)
+  pendingCommand?: "OPEN" | "CLOSE" | null;
 }
 
 export interface Booking {
@@ -36,7 +37,7 @@ export interface Booking {
   userId: string;
   lockerId: string;
   qrCode: string;
-  status: "active" | "completed";
+  status: "active" | "completed" | "pending";
   timestamp: string;
 }
 
@@ -88,12 +89,12 @@ export const bookLocker = async (
         userId,
         lockerId,
         qrCode: bookingId, // Use booking ID as QR token
-        status: "active",
+        status: "pending",
         timestamp: new Date().toISOString(),
       };
 
       transaction.update(lockerRef, {
-        status: "booked",
+        status: "reserved",
         currentUserId: userId,
         activeBookingId: bookingId,
       });
@@ -104,6 +105,50 @@ export const bookLocker = async (
     });
   } catch (e: any) {
     console.error("Booking failed: ", e);
+    return { success: false, error: e.message };
+  }
+};
+
+export const cancelBooking = async (
+  lockerId: string,
+  bookingId: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    await runTransaction(db, async (transaction) => {
+      const lockerRef = doc(db, "lockers", lockerId);
+      const bookingRef = doc(db, "bookings", bookingId);
+
+      transaction.update(lockerRef, {
+        status: "available",
+        currentUserId: null,
+        activeBookingId: null,
+      });
+
+      transaction.delete(bookingRef);
+    });
+    return { success: true };
+  } catch (e: any) {
+    console.error("Cancel booking failed:", e);
+    return { success: false, error: e.message };
+  }
+};
+
+export const verifyBooking = async (bookingId: string) => {
+  try {
+    await runTransaction(db, async (transaction) => {
+      const bookingRef = doc(db, "bookings", bookingId);
+      const bookingDoc = await transaction.get(bookingRef);
+
+      if (!bookingDoc.exists()) throw "Booking not found";
+      const bookingData = bookingDoc.data() as Booking;
+
+      const lockerRef = doc(db, "lockers", bookingData.lockerId);
+
+      transaction.update(bookingRef, { status: "active" });
+      transaction.update(lockerRef, { status: "booked" });
+    });
+    return { success: true };
+  } catch (e: any) {
     return { success: false, error: e.message };
   }
 };
@@ -233,6 +278,37 @@ export const toggleLockerLock = async (
     return { success: true };
   } catch (e: any) {
     console.error("Toggle lock failed:", e);
+    return { success: false, error: e.message };
+  }
+};
+
+// Control locker via HTTP API (for web control after QR validation)
+export const controlLocker = async (
+  lockerId: string,
+  action: "open" | "close",
+  userId?: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const response = await fetch("/api/control-locker", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ lockerId, action, userId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Failed to control locker",
+      };
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    console.error("Control locker failed:", e);
     return { success: false, error: e.message };
   }
 };

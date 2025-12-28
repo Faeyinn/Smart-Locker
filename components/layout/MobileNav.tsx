@@ -15,11 +15,6 @@ export default function MobileNav() {
       icon: LayoutGrid,
     },
     {
-      href: "/ticket",
-      label: "Ticket",
-      icon: Ticket,
-    },
-    {
       href: "/history",
       label: "History",
       icon: History,

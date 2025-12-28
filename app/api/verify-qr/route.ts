@@ -16,19 +16,12 @@ export async function POST(request: NextRequest) {
     const { token } = body;
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Token is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Token is required" }, { status: 400 });
     }
 
     // Find booking by qrCode (token)
     const bookingsRef = collection(db, "bookings");
-    const q = query(
-      bookingsRef,
-      where("qrCode", "==", token),
-      where("status", "==", "active")
-    );
+    const q = query(bookingsRef, where("qrCode", "==", token));
     const snapshot = await getDocs(q);
 
     if (snapshot.empty) {
@@ -40,34 +33,38 @@ export async function POST(request: NextRequest) {
 
     const bookingDoc = snapshot.docs[0];
     const bookingData = bookingDoc.data();
-    const bookingId = bookingDoc.id;
+
+    // Check if booking is pending or active
+    if (bookingData.status !== "pending" && bookingData.status !== "active") {
+      return NextResponse.json(
+        { error: "Booking is not active" },
+        { status: 400 }
+      );
+    }
 
     // Get locker information
     const lockerRef = doc(db, "lockers", bookingData.lockerId);
     const lockerDoc = await getDoc(lockerRef);
 
     if (!lockerDoc.exists()) {
-      return NextResponse.json(
-        { error: "Locker not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Locker not found" }, { status: 404 });
     }
 
     const lockerData = lockerDoc.data();
     const lockerNumber = lockerData.number;
 
-    // Verify and update booking status
+    // Activate booking if it was pending
     await runTransaction(db, async (transaction) => {
-      // Mark booking as completed
-      const bookingRef = doc(db, "bookings", bookingId);
-      transaction.update(bookingRef, { status: "completed" });
-
-      // Update locker status
-      transaction.update(lockerRef, {
-        status: "available",
-        currentUserId: null,
-        activeBookingId: null,
-      });
+      if (bookingData.status === "pending") {
+        transaction.update(bookingDoc.ref, { status: "active" });
+        transaction.update(lockerRef, {
+          status: "booked",
+          isLocked: false, // Unlock initially
+        });
+      } else {
+        // Just unlock if already active
+        transaction.update(lockerRef, { isLocked: false });
+      }
     });
 
     // Return response in format expected by ESP32
@@ -83,4 +80,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
