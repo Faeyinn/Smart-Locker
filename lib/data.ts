@@ -169,8 +169,10 @@ export const completeBooking = async (bookingId: string) => {
       transaction.update(bookingRef, { status: "completed" });
       transaction.update(lockerRef, {
         status: "available",
-        currentUserId: null, // field delete is handled by null in update? Use deleteField() if strict but null works for json-like
+        currentUserId: null,
         activeBookingId: null,
+        isLocked: true,
+        pendingCommand: "CLOSE",
       });
     });
     return true;

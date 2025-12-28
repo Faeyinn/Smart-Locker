@@ -1,23 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Locker, getLockers, seedLockers } from "@/lib/data";
+import { Locker, seedLockers } from "@/lib/data";
 import { UserLockerCard } from "@/components/locker/UserLockerCard";
-import {
-  Loader2,
-  RefreshCcw,
-  Box,
-  Lock,
-  Package,
-  Users,
-} from "lucide-react";
+
+import { Loader2, RefreshCcw, Box, Lock, Package, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 
 export default function DashboardPage() {
   const [lockers, setLockers] = useState<Locker[]>([]);
@@ -28,27 +20,29 @@ export default function DashboardPage() {
     setIsSeeding(true);
     try {
       await seedLockers();
-      await fetchLockers();
     } finally {
       setIsSeeding(false);
     }
   };
 
-  const fetchLockers = async () => {
-    try {
-      setLoading(true);
-      const data = await getLockers();
-      setLockers([...data]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLockers();
+    setLoading(true);
+    const q = query(collection(db, "lockers"), orderBy("number"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Locker[];
+      setLockers(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const availableLockers = lockers.filter((l) => l.status === "available").length;
+  const availableLockers = lockers.filter(
+    (l) => l.status === "available"
+  ).length;
   const bookedLockers = lockers.filter((l) => l.status === "booked").length;
   const lockedLockers = lockers.filter((l) => l.isLocked !== false).length;
 
@@ -64,12 +58,13 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
-            Kelola loker Anda dengan mudah. Generate QR code untuk akses atau kontrol langsung dari web.
+            Kelola loker Anda dengan mudah. Generate QR code untuk akses atau
+            kontrol langsung dari web.
           </p>
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={fetchLockers}
+            onClick={() => window.location.reload()}
             variant="outline"
             className="h-11 px-6 shadow-sm hover:shadow-md transition-all"
             disabled={loading}
@@ -83,14 +78,18 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" data-aos="fade-up">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-aos="fade-up">
         <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Total Loker</CardTitle>
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              Total Loker
+            </CardTitle>
             <Package className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{lockers.length}</div>
+            <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+              {lockers.length}
+            </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
               Semua unit loker
             </p>
@@ -99,7 +98,9 @@ export default function DashboardPage() {
 
         <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Tersedia</CardTitle>
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              Tersedia
+            </CardTitle>
             <Box className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
@@ -114,7 +115,9 @@ export default function DashboardPage() {
 
         <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Terpakai</CardTitle>
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              Terpakai
+            </CardTitle>
             <Users className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
@@ -129,7 +132,9 @@ export default function DashboardPage() {
 
         <Card className="shadow-sm border-neutral-200 dark:border-neutral-800 hover:shadow-md transition-shadow duration-300 bg-white dark:bg-neutral-950">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Terkunci</CardTitle>
+            <CardTitle className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              Terkunci
+            </CardTitle>
             <Lock className="h-4 w-4 text-neutral-500 dark:text-neutral-400" />
           </CardHeader>
           <CardContent>
@@ -177,7 +182,7 @@ export default function DashboardPage() {
                 data-aos-delay={index * 100}
                 className="transition-transform duration-300 hover:scale-[1.02]"
               >
-                <UserLockerCard locker={locker} onUpdate={fetchLockers} />
+                <UserLockerCard locker={locker} />
               </div>
             ))}
 
@@ -190,7 +195,8 @@ export default function DashboardPage() {
                   <div className="text-center space-y-2">
                     <h3 className="text-lg font-semibold">Tidak Ada Loker</h3>
                     <p className="text-muted-foreground max-w-sm mx-auto">
-                      Database loker masih kosong. Inisialisasi data demo untuk memulai.
+                      Database loker masih kosong. Inisialisasi data demo untuk
+                      memulai.
                     </p>
                   </div>
                   <Button

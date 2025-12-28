@@ -3,64 +3,72 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-/* ================= WIFI ================= */
+/* ================= CONFIGURATION ================= */
 #define RELAY_LOCKER_1 25
 #define RELAY_LOCKER_2 26
 #define SERIAL2_BAUD 9600
 
+// WiFi Credentials
 const char* ssid = "UNAND";
 const char* password = "HardiknasDiAndalas";
 
+// Server Endpoints
 const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
 const char* pollUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/check-commands";
+
+/* ================= GLOBALS ================= */
 unsigned long lastPollTime = 0;
-const long pollInterval = 2000; // Poll every 2 seconds
+const long pollInterval = 2000; // Poll commands every 2 seconds
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial2.begin(SERIAL2_BAUD, SERIAL_8N1, 16, 17);
+  // Initialize UART2 for ESP32-CAM (RX=3, TX=1)
+  Serial2.begin(SERIAL2_BAUD, SERIAL_8N1, 13, 12);
 
+  // Initialize Relay Pins
   pinMode(RELAY_LOCKER_1, OUTPUT);
   pinMode(RELAY_LOCKER_2, OUTPUT);
 
-  // Initialize relays ke state NC (Normally Closed) - HIGH = solenoid mendapat 12V
-  // Relay aktif LOW, jadi HIGH = relay OFF = solenoid ON (NC) - Wait, logic below says LOW=Open.
-  // Assuming LOW = Active = Open (Solenoid Retract)
+  // Initial state: Locked (Relay High for Standard Active Low Modules)
   digitalWrite(RELAY_LOCKER_1, HIGH);
   digitalWrite(RELAY_LOCKER_2, HIGH);
 
   connectWiFi();
 
-  Serial.println("ESP32 READY - Waiting for QR code or Web Commands...");
+  Serial.println("\n-------------------------------------------");
+  Serial.println("SMART LOCKER SYSTEM READY");
+  Serial.println("Waiting for QR Code from ESP32-CAM...");
+  Serial.println("-------------------------------------------\n");
 }
 
 void loop() {
-  // 1. Baca data QR code dari ESP32-CAM via Serial2
+  // 1. Listen for QR Token from ESP32-CAM via Serial2 (UART)
   if (Serial2.available() > 0) {
     String token = Serial2.readStringUntil('\n');
-    token.trim(); // Hapus whitespace
+    token.trim();
     
     if (token.length() > 0) {
-      Serial.println("QR Code Received from ESP32-CAM: " + token);
+      Serial.println("[ESP32-CAM] QR Detected - Token: " + token);
+      Serial.println("[System] Sending to Server for Validation...");
       sendTokenToServer(token);
-      delay(3000); // Anti double scan
+      delay(3000); // Prevention for double scanning
     }
   }
 
-  // 2. Poll Server for Web Commands
+  // 2. Poll Server for Remote Commands (Open/Close from Web Dashboard)
   if (millis() - lastPollTime >= pollInterval) {
     lastPollTime = millis();
     checkCommands();
   }
 }
 
-/* ============== WIFI ==================== */
+/* ================= WIFI CONNECTION ================= */
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
+  Serial.print("Connecting to WiFi: " + String(ssid));
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -70,50 +78,55 @@ void connectWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP Address: ");
+    Serial.println("\n[WiFi] Connected successfully!");
+    Serial.print("[WiFi] IP Address: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\nWiFi Connection Failed!");
-    Serial.println("Please check your credentials and try again.");
+    Serial.println("\n[WiFi] Connection failed! Re-check credentials.");
   }
 }
 
-/* ========= SEND TOKEN TO SERVER ========= */
+/* ================= SERVER VALIDATION ================= */
 void sendTokenToServer(String token) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Error] WiFi disconnected. Cannot validate QR.");
+    return;
+  }
+
   WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate validation
+  client.setInsecure(); // Required for ngrok/dynamic SSL
 
   HTTPClient https;
-  
   if (!https.begin(client, serverUrl)) {
-    Serial.println("Connection failed!");
+    Serial.println("[Error] Could not initialize HTTPS connection.");
     return;
   }
 
   https.addHeader("Content-Type", "application/json");
 
-  StaticJsonDocument<200> doc;
-  doc["token"] = token;
+  // Create JSON Request
+  StaticJsonDocument<200> reqDoc;
+  reqDoc["token"] = token;
 
   String payload;
-  serializeJson(doc, payload);
-  Serial.println("Sending QR: " + payload);
+  serializeJson(reqDoc, payload);
 
   int httpCode = https.POST(payload);
 
   if (httpCode == 200) {
     String response = https.getString();
-    Serial.println("Response: " + response);
-    handleResponse(response);
+    Serial.println("[Server] Validation Success: " + response);
+    handleServerAction(response);
+  } else if (httpCode == 404) {
+    Serial.println("[Server] Denied: Invalid or Expired QR Code.");
   } else {
-    Serial.println("Error: HTTP " + String(httpCode));
+    Serial.println("[Server] Error Event: HTTP " + String(httpCode));
   }
 
   https.end();
 }
 
-/* ========= CHECK COMMANDS ============= */
+/* ================= COMMAND POLLING ================= */
 void checkCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -121,30 +134,28 @@ void checkCommands() {
   client.setInsecure();
   
   HTTPClient https;
-  
   if (https.begin(client, pollUrl)) {
     int httpCode = https.GET();
     
     if (httpCode == 200) {
       String response = https.getString();
-      // Only print if action is not NONE to avoid spamming serial
+      // Only process if it's a real command
       if (response.indexOf("NONE") == -1) { 
-        Serial.println("Poll Response: " + response);
-        handleResponse(response);
+        Serial.println("[Web] Command Received: " + response);
+        handleServerAction(response);
       }
     }
     https.end();
   }
 }
 
-/* ========== HANDLE RESPONSE ============= */
-void handleResponse(String response) {
+/* ================= ACTION HANDLER ================= */
+void handleServerAction(String response) {
   StaticJsonDocument<200> doc;
   DeserializationError error = deserializeJson(doc, response);
 
   if (error) {
-    Serial.print("JSON parsing failed: ");
-    Serial.println(error.c_str());
+    Serial.println("[Error] JSON Parsing failed: " + String(error.c_str()));
     return;
   }
 
@@ -153,32 +164,30 @@ void handleResponse(String response) {
 
   if (action == "NONE") return;
 
-  Serial.println("Action: " + action + " for Locker " + String(lockerId));
-
   int relayPin = -1;
   if (lockerId == 1) relayPin = RELAY_LOCKER_1;
   else if (lockerId == 2) relayPin = RELAY_LOCKER_2;
 
   if (relayPin != -1) {
     if (action == "OPEN") {
-      controlRelay(relayPin, true); // OPEN
+      executeRelay(relayPin, true, lockerId); 
     } else if (action == "CLOSE") {
-      controlRelay(relayPin, false); // CLOSE
+      executeRelay(relayPin, false, lockerId);
     }
   } else {
-    Serial.println("Invalid locker ID");
+    Serial.println("[Error] Invalid Locker ID received from server.");
   }
 }
 
-/* ============ CONTROL RELAY ============= */
-void controlRelay(int relayPin, bool open) {
+/* ================= RELAY EXECUTION ================= */
+void executeRelay(int pin, bool open, int num) {
   if (open) {
-    Serial.println("Opening Relay...");
-    digitalWrite(relayPin, LOW); // Active LOW -> ON -> Open
+    Serial.println("[Relay] UNLOCKING Locker " + String(num));
+    digitalWrite(pin, LOW); // Trigger Solenoid
   } else {
-    Serial.println("Closing Relay...");
-    digitalWrite(relayPin, HIGH); // OFF -> Close
+    Serial.println("[Relay] LOCKING Locker " + String(num));
+    digitalWrite(pin, HIGH); // Release Solenoid
   }
-  // Note: If using Solenoid, ensure it doesn't overheat if kept OPEN (LOW) for too long.
 }
+
 

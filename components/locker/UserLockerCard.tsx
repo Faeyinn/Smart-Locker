@@ -6,7 +6,6 @@ import {
   controlLocker,
   cancelBooking,
   completeBooking,
-  verifyBooking,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import {
@@ -18,7 +17,7 @@ import {
   CheckCircle2,
   ScanLine,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -27,8 +26,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -72,7 +69,7 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
           variant: "destructive",
         });
       }
-    } catch (e) {
+    } catch {
       toast({
         title: "Error",
         description: "Something went wrong",
@@ -102,7 +99,7 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
           variant: "destructive",
         });
       }
-    } catch (e) {
+    } catch {
       toast({
         title: "Error",
         description: "Something went wrong",
@@ -131,7 +128,7 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
           variant: "destructive",
         });
       }
-    } catch (e) {
+    } catch {
       toast({
         title: "Error",
         description: "Something went wrong",
@@ -160,7 +157,7 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
           variant: "destructive",
         });
       }
-    } catch (e) {
+    } catch {
       toast({
         title: "Error",
         description: "Something went wrong",
@@ -171,19 +168,17 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
     }
   };
 
-  // Temporary helper for demonstration/validation
-  const handleSimulateScan = async () => {
-    if (!locker.activeBookingId) return;
-    setLoading(true);
-    await verifyBooking(locker.activeBookingId);
-    onUpdate?.();
-    setLoading(false);
-  };
-
-  // Auto-close QR dialog if status changes to booked (scanned)
-  if (showQR && isBooked) {
-    setShowQR(false);
-  }
+  // Auto-close QR dialog and show success toast if status changes to booked (scanned)
+  useEffect(() => {
+    if (isBooked && showQR) {
+      setShowQR(false);
+      toast({
+        variant: "success",
+        title: "Scan Berhasil!",
+        description: `Locker ${locker.number} telah diaktifkan.`,
+      });
+    }
+  }, [isBooked, showQR, locker.number, toast]);
 
   return (
     <>
@@ -381,14 +376,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
                 <QRCodeSVG value={locker.activeBookingId} size={180} />
               )}
             </div>
-
-            {/* Simulate Button for Dev */}
-            <button
-              onClick={handleSimulateScan}
-              className="text-[10px] text-neutral-400 hover:text-neutral-900 underline"
-            >
-              [DEV] Simulate Scan
-            </button>
           </div>
 
           <AlertDialogFooter className="sm:justify-center">
