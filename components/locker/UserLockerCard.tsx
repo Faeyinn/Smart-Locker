@@ -8,30 +8,13 @@ import {
   completeBooking,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
-import {
-  Box,
-  Lock,
-  LockOpen,
-  Loader2,
-  X,
-  CheckCircle2,
-  ScanLine,
-} from "lucide-react";
+import { Box, Lock, LockOpen, Loader2, X, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 interface UserLockerCardProps {
   locker: Locker;
@@ -42,11 +25,11 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [showQR, setShowQR] = useState(false);
 
   const isAvailable = locker.status === "available";
   const isReserved = locker.status === "reserved";
-  const isBooked = locker.status === "booked";
+  // Treat reserved as booked since we removed QR validation
+  const isBooked = locker.status === "booked" || locker.status === "reserved";
   const isOwnedByUser = user && locker.currentUserId === user.id;
   const isLocked = locker.isLocked !== false; // Default to locked if undefined
 
@@ -56,10 +39,9 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
     try {
       const result = await bookLocker(user.id, locker.id);
       if (result.success) {
-        setShowQR(true);
         toast({
-          title: "Booking Created",
-          description: "Silakan scan QR code untuk validasi.",
+          title: "Berhasil",
+          description: "Loker siap digunakan.",
         });
         onUpdate?.();
       } else {
@@ -86,7 +68,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
     try {
       const result = await cancelBooking(locker.id, locker.activeBookingId);
       if (result.success) {
-        setShowQR(false); // Close dialog
         toast({
           title: "Booking Cancelled",
           description: "Booking telah dibatalkan.",
@@ -168,18 +149,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
     }
   };
 
-  // Auto-close QR dialog and show success toast if status changes to booked (scanned)
-  useEffect(() => {
-    if (isBooked && showQR) {
-      setShowQR(false);
-      toast({
-        variant: "success",
-        title: "Scan Berhasil!",
-        description: `Locker ${locker.number} telah diaktifkan.`,
-      });
-    }
-  }, [isBooked, showQR, locker.number, toast]);
-
   return (
     <>
       <Card
@@ -222,8 +191,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
                 "p-3 rounded-xl transition-all duration-300",
                 isAvailable
                   ? "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-                  : isReserved && isOwnedByUser
-                  ? "bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
                   : isBooked && isOwnedByUser && isLocked
                   ? "bg-neutral-900 text-white dark:bg-white dark:text-black" // Secure locked
                   : isBooked && isOwnedByUser && !isLocked
@@ -233,8 +200,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
             >
               {isAvailable ? (
                 <Box className="w-5 h-5" />
-              ) : isReserved ? (
-                <ScanLine className="w-5 h-5 animate-pulse" />
               ) : isBooked && isOwnedByUser ? (
                 isLocked ? (
                   <Lock className="w-5 h-5" />
@@ -273,8 +238,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
                 ? "Tersedia"
                 : !isOwnedByUser
                 ? "Terpakai"
-                : isReserved
-                ? "Validasi QR"
                 : isBooked
                 ? isLocked
                   ? "Terkunci"
@@ -299,16 +262,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
                     Gunakan Locker
                   </>
                 )}
-              </Button>
-            )}
-
-            {isReserved && isOwnedByUser && (
-              <Button
-                onClick={() => setShowQR(true)}
-                className="w-full bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
-              >
-                <ScanLine className="w-4 h-4 mr-2" />
-                Tampilkan QR Code
               </Button>
             )}
 
@@ -360,41 +313,6 @@ export function UserLockerCard({ locker, onUpdate }: UserLockerCardProps) {
           </div>
         </CardContent>
       </Card>
-
-      <AlertDialog open={showQR} onOpenChange={setShowQR}>
-        <AlertDialogContent className="max-w-xs rounded-2xl">
-          <AlertDialogHeader className="text-center">
-            <AlertDialogTitle>Scan QR Code</AlertDialogTitle>
-            <AlertDialogDescription className="text-center">
-              Arahkan ke kamera pada loker untuk validasi.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="flex flex-col items-center justify-center py-4 gap-4">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-neutral-200">
-              {locker.activeBookingId && (
-                <QRCodeSVG value={locker.activeBookingId} size={180} />
-              )}
-            </div>
-          </div>
-
-          <AlertDialogFooter className="sm:justify-center">
-            <Button
-              variant="outline"
-              onClick={handleCancelBooking}
-              disabled={loading}
-              className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 dark:hover:bg-red-950/30 dark:border-red-900"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <X className="w-4 h-4 mr-2" />
-              )}
-              Batal
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

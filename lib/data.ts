@@ -94,9 +94,10 @@ export const bookLocker = async (
       };
 
       transaction.update(lockerRef, {
-        status: "reserved",
+        status: "booked",
         currentUserId: userId,
         activeBookingId: bookingId,
+        isLocked: true,
       });
 
       transaction.set(doc(db, "bookings", bookingId), booking);

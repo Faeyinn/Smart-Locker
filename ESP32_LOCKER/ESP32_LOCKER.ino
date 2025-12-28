@@ -1,184 +1,149 @@
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <ctype.h>
-#include <Firebase_ESP_Client.h>
+#include <LiquidCrystal_I2C.h>
 
-/* ===== RELAY (AKTIF LOW) ===== */
-#define RELAY_1 25
-#define RELAY_2 26
-
-/* ===== WIFI ===== */
+/* ===== CONFIG ===== */
 const char* ssid = "UNAND";
 const char* password = "HardiknasDiAndalas";
 
-/* ===== FIREBASE (FIRESTORE) ===== */
-#define API_KEY "AIzaSyBSB-Cd2WvBbGXD2FMj2RyHVFb96059sBk"
-#define FIREBASE_PROJECT_ID "smartlocker-d91c0"
+const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/check-commands";
 
-/* ===== API BACKEND ===== */
-const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
+/* ===== HARDWARE PINS ===== */
+#define RELAY_1 25
+#define RELAY_2 26
+#define BUZZER_PIN 27
 
-/* ===== PARAMETER VALIDASI TOKEN ===== */
-#define MIN_TOKEN_LENGTH 6
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
-
-String lastProcessedToken = "";
-bool signupOK = false;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup() {
   Serial.begin(115200);
 
-  // Relay setup
+  // Pin Setup
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  // Default Lock (HIGH = OFF/LOCKED)
   digitalWrite(RELAY_1, HIGH);
   digitalWrite(RELAY_2, HIGH);
 
-  // WiFi
+  // LCD Setup
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("System Starting");
+  lcd.setCursor(0, 1);
+  lcd.print("Connecting WiFi");
+
+  // WiFi Connect
   WiFi.begin(ssid, password);
-  Serial.print("[ESP32] Connecting WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
+  int retry = 0;
+  while (WiFi.status() != WL_CONNECTED && retry < 20) {
     delay(500);
     Serial.print(".");
+    retry++;
   }
-  Serial.println("\n[ESP32] WiFi Connected");
-
-  // Firebase Setup
-  config.api_key = API_KEY;
   
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("[ESP32] Firebase Auth Success");
-    signupOK = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected");
+    lcd.clear();
+    lcd.print("WiFi Connected");
+    beep(1);
   } else {
-    Serial.printf("[ESP32] Firebase Auth Failed: %s\n", config.signer.signupError.message.c_str());
+    Serial.println("\nWiFi Failed");
+    lcd.clear();
+    lcd.print("WiFi Failed");
   }
-  
-  config.token_status_callback = tokenStatusCallback;
-
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
+  delay(1000);
 }
 
 void loop() {
-  if (Firebase.ready() && signupOK) {
-    // Baca Document dari Firestore: scanners/cam1
-    // Menggunakan path yang terpisah dari 'lockers' agar lebih rapi sesuai struktur DB web
-    if (Firebase.Firestore.getDocument(&fbdo, FIREBASE_PROJECT_ID, "", "scanners/cam1", "")) {
-      
-      // Parse Response JSON
-      // Struktur respons Firestore:
-      // { "name": "...", "fields": { "latest_token": { "stringValue": "TOKEN123" } }, ... }
-      
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, fbdo.payload());
-      
-      if (!error) {
-        // Field di Firestore: latest_token
-        const char* tokenRaw = doc["fields"]["latest_token"]["stringValue"];
-        
-        if (tokenRaw) {
-          String token = String(tokenRaw);
-          
-          if (token != "" && token != lastProcessedToken) {
-             Serial.println("[ESP32] New Token from Firestore: " + token);
-             
-             if (isValidToken(token)) {
-               verifyQR(token);
-               lastProcessedToken = token;
-             } else {
-               Serial.println("[ESP32] Token invalid format");
-             }
-          }
-        }
-      } else {
-        Serial.print("[ESP32] Parse error: ");
-        Serial.println(error.c_str());
-      }
-      
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    
+    // Kirim GET request
+    int httpCode = http.GET();
+    
+    if (httpCode == 200) {
+      String payload = http.getString();
+      Serial.println(payload);
+      processResponse(payload);
     } else {
-       Serial.print("[ESP32] Get Firestore fail: ");
-       Serial.println(fbdo.errorReason());
+      Serial.printf("HTTP Error: %d\n", httpCode);
+      lcd.setCursor(0, 0);
+      lcd.print("Server Error    ");
     }
+    
+    http.end();
+  } else {
+    Serial.println("WiFi Disconnected. Reconnecting...");
+    WiFi.reconnect();
   }
   
-  // Interval 2 detik untuk menghemat kuota Read Firestore (Free Tier: 50k reads/day)
-  // 2s = ~43k reads/day (aman)
-  delay(2000); 
+  delay(1000);
 }
 
-bool isValidToken(String token) {
-  if (token.length() < MIN_TOKEN_LENGTH) return false;
-  for (int i = 0; i < token.length(); i++) {
-    if (isalnum(token[i])) return true;
-  }
-  return false;
-}
-
-void verifyQR(String token) {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClientSecure client;
-  client.setInsecure(); // SSL ignored for dev
-
-  HTTPClient https;
-  if (!https.begin(client, serverUrl)) {
-    Serial.println("[ESP32] HTTPS begin failed");
+void processResponse(String json) {
+  StaticJsonDocument<1024> doc;
+  DeserializationError error = deserializeJson(doc, json);
+  
+  if (error) {
+    Serial.println("JSON parse failed");
     return;
   }
+  
+  // Ambil data dari JSON response
+  String action = doc["action"]; // "OPEN", "CLOSE", "NONE"
+  
+  if (action != "NONE") {
+    beep(2); // Bunyi 2 kali pendek
+  }
+  
+  // Update status Relay berdasarkan "states"
+  // Format: { "1": "OPEN", "2": "CLOSED" }
+  JsonObject states = doc["states"];
+  
+  String s1 = states["1"].as<String>();
+  String s2 = states["2"].as<String>();
+  
+  updateLocker(1, s1);
+  updateLocker(2, s2);
+  
+  // Update LCD
+  updateLCD(s1, s2);
+}
 
-  https.addHeader("Content-Type", "application/json");
-
-  StaticJsonDocument<200> doc;
-  doc["token"] = token;
-
-  String body;
-  serializeJson(doc, body);
-
-  Serial.println("[ESP32] Sending POST request: " + body);
-
-  int httpCode = https.POST(body);
-
-  if (httpCode == 200) {
-    String response = https.getString();
-    Serial.println("[ESP32] Response: " + response);
-    handleResponse(response);
+void updateLocker(int id, String status) {
+  int pin = (id == 1) ? RELAY_1 : RELAY_2;
+  
+  // OPEN = Relay LOW (Aktif) -> Solenoid Narik (Buka)
+  // CLOSED = Relay HIGH (Mati) -> Solenoid Lepas (Kunci)
+  if (status == "OPEN") {
+    digitalWrite(pin, LOW);
   } else {
-    Serial.print("[ESP32] HTTP Error: ");
-    Serial.println(httpCode);
-    Serial.println(https.getString());
-  }
-
-  https.end();
-}
-
-void handleResponse(String response) {
-  StaticJsonDocument<200> doc;
-  if (deserializeJson(doc, response)) {
-    Serial.println("[ESP32] JSON parse failed");
-    return;
-  }
-
-  // Sesuai dengan respons API Next.js: { "action": "OPEN", "lockerId": 1 }
-  String action = doc["action"];
-  int lockerId = doc["lockerId"];
-
-  Serial.println("[ESP32] Action: " + action + " | Locker ID: " + String(lockerId));
-
-  if (action == "OPEN") {
-    if (lockerId == 1) openLocker(RELAY_1);
-    else if (lockerId == 2) openLocker(RELAY_2);
+    digitalWrite(pin, HIGH);
   }
 }
 
-void openLocker(int pin) {
-  Serial.println("[ESP32] OPEN LOCKER on pin " + String(pin));
-  digitalWrite(pin, LOW);
-  delay(5000);
-  digitalWrite(pin, HIGH);
-  Serial.println("[ESP32] Locker closed");
+void updateLCD(String s1, String s2) {
+  lcd.setCursor(0, 0);
+  String l1 = "L1: " + (s1 == "null" ? "OFF" : s1); // Handle null
+  while(l1.length() < 16) l1 += " ";
+  lcd.print(l1);
+  
+  lcd.setCursor(0, 1);
+  String l2 = "L2: " + (s2 == "null" ? "OFF" : s2);
+  while(l2.length() < 16) l2 += " ";
+  lcd.print(l2);
+}
+
+void beep(int times) {
+  for(int i=0; i<times; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(100);
+    digitalWrite(BUZZER_PIN, LOW);
+    if (i < times-1) delay(100);
+  }
 }

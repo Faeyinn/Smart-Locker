@@ -36,9 +36,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const states: Record<string, string> = {};
+    const sortedDocs = snapshot.docs.sort(
+      (a, b) => a.data().number - b.data().number
+    );
+
+    sortedDocs.forEach((d) => {
+      const data = d.data();
+      states[data.number] = data.isLocked ? "CLOSED" : "OPEN";
+    });
+
     return NextResponse.json({
       action,
       lockerId,
+      states,
     });
   } catch (error: any) {
     console.error("Check commands error:", error);
