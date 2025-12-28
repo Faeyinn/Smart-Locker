@@ -1,0 +1,135 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <ctype.h>
+
+/* ===== RELAY (AKTIF LOW) ===== */
+#define RELAY_1 25
+#define RELAY_2 26
+
+/* ===== WIFI ===== */
+const char* ssid = "UNAND";
+const char* password = "HardiknasDiAndalas";
+
+/* ===== API ===== */
+const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
+
+/* ===== UART ESP32 <-> ESP32-CAM =====
+   RX = GPIO 16
+   TX = GPIO 17
+*/
+#define UART_RX 16
+#define UART_TX 17
+
+/* ===== PARAMETER VALIDASI TOKEN ===== */
+#define MIN_TOKEN_LENGTH 6   // minimal panjang token QR
+
+void setup() {
+  Serial.begin(115200);
+
+  // UART ke ESP32-CAM
+  Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+
+  // Relay setup
+  pinMode(RELAY_1, OUTPUT);
+  pinMode(RELAY_2, OUTPUT);
+  digitalWrite(RELAY_1, HIGH);
+  digitalWrite(RELAY_2, HIGH);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected");
+}
+
+void loop() {
+  if (!Serial2.available()) return;
+
+  String token = Serial2.readStringUntil('\n');
+  token.trim();
+
+  // ===== FILTER NOISE UART =====
+  if (!isValidToken(token)) {
+    return;
+  }
+
+  Serial.println("Token Received: " + token);
+  verifyQR(token);
+}
+
+/* ===== VALIDASI TOKEN ===== */
+bool isValidToken(String token) {
+  if (token.length() < MIN_TOKEN_LENGTH) return false;
+
+  // minimal harus ada huruf/angka
+  for (int i = 0; i < token.length(); i++) {
+    if (isalnum(token[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ===== KIRIM TOKEN KE SERVER ===== */
+void verifyQR(String token) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure(); // HTTPS tanpa sertifikat
+
+  HTTPClient https;
+  if (!https.begin(client, serverUrl)) {
+    Serial.println("HTTPS begin failed");
+    return;
+  }
+
+  https.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<200> doc;
+  doc["token"] = token;
+
+  String body;
+  serializeJson(doc, body);
+
+  int httpCode = https.POST(body);
+
+  if (httpCode == 200) {
+    String response = https.getString();
+    handleResponse(response);
+  } else {
+    Serial.print("HTTP Error: ");
+    Serial.println(httpCode);
+  }
+
+  https.end();
+}
+
+/* ===== PROSES RESPONSE SERVER ===== */
+void handleResponse(String response) {
+  StaticJsonDocument<200> doc;
+  if (deserializeJson(doc, response)) {
+    Serial.println("JSON parse failed");
+    return;
+  }
+
+  String action = doc["action"];
+  int lockerId = doc["lockerId"];
+
+  if (action == "OPEN") {
+    if (lockerId == 1) openLocker(RELAY_1);
+    else if (lockerId == 2) openLocker(RELAY_2);
+  }
+}
+
+/* ===== AKSI RELAY ===== */
+void openLocker(int pin) {
+  Serial.println("OPEN LOCKER");
+  digitalWrite(pin, LOW);
+  delay(5000);
+  digitalWrite(pin, HIGH);
+}
