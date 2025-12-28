@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <LiquidCrystal_I2C.h>
@@ -14,7 +15,11 @@ const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/
 #define RELAY_2 26
 #define BUZZER_PIN 27
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+// Initialize 20x4 LCD
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+String lastUsage1 = "";
+String lastUsage2 = "";
 
 void setup() {
   Serial.begin(115200);
@@ -46,22 +51,25 @@ void setup() {
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected");
+    Serial.println("\nWiFi Connected :)");
     lcd.clear();
-    lcd.print("WiFi Connected");
+    lcd.print("WiFi Connected :)");
     beep(1);
   } else {
-    Serial.println("\nWiFi Failed");
+    Serial.println("\nWiFi Failed :(");
     lcd.clear();
-    lcd.print("WiFi Failed");
+    lcd.print("WiFi Failed :(");
   }
   delay(1000);
 }
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client;
+    client.setInsecure(); // Ignore SSL certificate errors for Ngrok/Dev
+
     HTTPClient http;
-    http.begin(serverUrl);
+    http.begin(client, serverUrl);
     
     // Kirim GET request
     int httpCode = http.GET();
@@ -98,21 +106,47 @@ void processResponse(String json) {
   String action = doc["action"]; // "OPEN", "CLOSE", "NONE"
   
   if (action != "NONE") {
-    beep(2); // Bunyi 2 kali pendek
+    beep(2);
   }
-  
-  // Update status Relay berdasarkan "states"
-  // Format: { "1": "OPEN", "2": "CLOSED" }
+
   JsonObject states = doc["states"];
   
-  String s1 = states["1"].as<String>();
-  String s2 = states["2"].as<String>();
+  // Locker 1 Data
+  JsonObject s1_obj = states["1"];
+  String l1_lock = s1_obj["lock"].as<String>();
+  String l1_usage = s1_obj["usage"].as<String>();
+
+  // Locker 2 Data
+  JsonObject s2_obj = states["2"];
+  String l2_lock = s2_obj["lock"].as<String>();
+  String l2_usage = s2_obj["usage"].as<String>();
   
-  updateLocker(1, s1);
-  updateLocker(2, s2);
+  // Deteksi perubahan status usage
+  bool statusChanged = false;
   
-  // Update LCD
-  updateLCD(s1, s2);
+  // Cek Locker 1
+  if (lastUsage1 != "" && l1_usage != lastUsage1) {
+    statusChanged = true;
+  }
+  // Cek Locker 2
+  if (lastUsage2 != "" && l2_usage != lastUsage2) {
+    statusChanged = true;
+  }
+  
+  if (statusChanged) {
+    beep(1);
+  }
+  
+  // Update state terakhir
+  lastUsage1 = l1_usage;
+  lastUsage2 = l2_usage;
+  
+  // Update Relays (Logic by "lock" status)
+  updateLocker(1, l1_lock);
+  updateLocker(2, l2_lock);
+  
+  // Update LCD 4 Lines
+  updateLCD4(l1_usage, l1_lock, l2_usage, l2_lock);
 }
 
 void updateLocker(int id, String status) {
@@ -127,16 +161,18 @@ void updateLocker(int id, String status) {
   }
 }
 
-void updateLCD(String s1, String s2) {
-  lcd.setCursor(0, 0);
-  String l1 = "L1: " + (s1 == "null" ? "OFF" : s1); // Handle null
-  while(l1.length() < 16) l1 += " ";
-  lcd.print(l1);
-  
-  lcd.setCursor(0, 1);
-  String l2 = "L2: " + (s2 == "null" ? "OFF" : s2);
-  while(l2.length() < 16) l2 += " ";
-  lcd.print(l2);
+void updateLCD4(String u1, String s1, String u2, String s2) {
+  printLine(0, "L1: " + u1);
+  printLine(1, "   Status: " + s1);
+  printLine(2, "L2: " + u2);
+  printLine(3, "   Status: " + s2);
+}
+
+void printLine(int row, String text) {
+  lcd.setCursor(0, row);
+  // Padding with spaces to clear old characters
+  while(text.length() < 20) text += " ";
+  lcd.print(text);
 }
 
 void beep(int times) {

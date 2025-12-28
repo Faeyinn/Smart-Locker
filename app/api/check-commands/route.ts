@@ -36,14 +36,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const states: Record<string, string> = {};
+    const states: Record<string, { lock: string; usage: string }> = {};
     const sortedDocs = snapshot.docs.sort(
       (a, b) => a.data().number - b.data().number
     );
 
     sortedDocs.forEach((d) => {
       const data = d.data();
-      states[data.number] = data.isLocked ? "CLOSED" : "OPEN";
+      states[data.number] = {
+        lock: data.isLocked ? "CLOSED" : "OPEN",
+        usage: data.status === "available" ? "AVAILABLE" : "USED",
+      };
     });
 
     return NextResponse.json({
