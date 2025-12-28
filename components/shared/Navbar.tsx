@@ -10,6 +10,22 @@ export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
 
+  const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, targetId: string) => {
+    e.preventDefault();
+    const element = document.getElementById(targetId);
+    if (element) {
+      const headerOffset = 64; // Height of sticky header (h-16 = 64px)
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth",
+      });
+    }
+    setIsMenuOpen(false);
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
@@ -29,18 +45,20 @@ export function Navbar() {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-          <Link
+          <a
             href="#features"
-            className="hover:text-primary transition-colors"
+            onClick={(e) => handleSmoothScroll(e, "features")}
+            className="hover:text-primary transition-colors cursor-pointer"
           >
             Features
-          </Link>
-          <Link
+          </a>
+          <a
             href="#how-it-works"
-            className="hover:text-primary transition-colors"
+            onClick={(e) => handleSmoothScroll(e, "how-it-works")}
+            className="hover:text-primary transition-colors cursor-pointer"
           >
             How it Works
-          </Link>
+          </a>
           <div className="flex items-center gap-4 ml-4">
             {user ? (
               <Link href={user.role === "admin" ? "/admin" : "/dashboard"}>
@@ -78,20 +96,20 @@ export function Navbar() {
         }`}
       >
         <div className="border-t p-4 bg-background space-y-4">
-          <Link
+          <a
             href="#features"
-            className="block text-sm font-medium"
-            onClick={() => setIsMenuOpen(false)}
+            onClick={(e) => handleSmoothScroll(e, "features")}
+            className="block text-sm font-medium cursor-pointer"
           >
             Features
-          </Link>
-          <Link
+          </a>
+          <a
             href="#how-it-works"
-            className="block text-sm font-medium"
-            onClick={() => setIsMenuOpen(false)}
+            onClick={(e) => handleSmoothScroll(e, "how-it-works")}
+            className="block text-sm font-medium cursor-pointer"
           >
             How it Works
-          </Link>
+          </a>
           <div className="pt-4 flex flex-col gap-2">
             {user ? (
               <Link

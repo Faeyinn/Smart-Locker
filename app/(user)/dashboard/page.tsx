@@ -76,7 +76,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid gap-4 md:grid-cols-3" data-aos="fade-up">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4" data-aos="fade-up">
         <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
@@ -114,6 +114,20 @@ export default function DashboardPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               Physical security active
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border-neutral-200 dark:border-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Available</CardTitle>
+            <Activity className="h-4 w-4 text-neutral-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {lockers.filter((l) => l.status === "available").length}/{activeDevices}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lockers available for booking
             </p>
           </CardContent>
         </Card>

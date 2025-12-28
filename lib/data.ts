@@ -82,11 +82,12 @@ export const bookLocker = async (
       }
 
       const bookingId = doc(bookingsRef).id; // Auto-gen ID
+      // Use booking ID as QR token for security and uniqueness
       const booking: Booking = {
         id: bookingId,
         userId,
         lockerId,
-        qrCode: `LOCKER-${lockerData.number}-${Date.now()}`,
+        qrCode: bookingId, // Use booking ID as QR token
         status: "active",
         timestamp: new Date().toISOString(),
       };

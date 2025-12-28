@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { getActiveBooking, completeBooking, Booking } from "@/lib/data";
+import { getActiveBooking, completeBooking, Booking, getLockerById, Locker } from "@/lib/data";
 import { QRCodeDisplay } from "@/components/booking/QRCodeDisplay";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2 } from "lucide-react";
@@ -30,6 +30,7 @@ import {
 export default function TicketPage() {
   const { user } = useAuth();
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [locker, setLocker] = useState<Locker | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -37,8 +38,16 @@ export default function TicketPage() {
     const loadBooking = async () => {
       if (!user) return;
       setBooking(null);
+      setLocker(null);
       const active = await getActiveBooking(user.id);
-      if (active) setBooking(active);
+      if (active) {
+        setBooking(active);
+        // Load locker info
+        const lockerData = await getLockerById(active.lockerId);
+        if (lockerData) {
+          setLocker(lockerData);
+        }
+      }
       setLoading(false);
     };
 
@@ -88,16 +97,18 @@ export default function TicketPage() {
         <div className="h-2 bg-black w-full" />
         <CardHeader className="text-center pb-2">
           <CardTitle>Locker Access</CardTitle>
-          <CardDescription>Booking ID: {booking.id}</CardDescription>
+          <CardDescription>
+            {locker ? `Locker #${locker.number}` : "Booking ID: " + booking.id.slice(0, 8)}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center py-6 space-y-6">
           <QRCodeDisplay value={booking.qrCode} />
           <div className="text-center">
             <p className="text-sm font-medium text-neutral-500 uppercase tracking-widest">
-              Code
+              Booking ID
             </p>
-            <p className="text-2xl font-mono font-bold tracking-wider mt-1">
-              {booking.qrCode.split("-")[1]}
+            <p className="text-lg font-mono font-bold tracking-wider mt-1 break-all px-2">
+              {booking.qrCode}
             </p>
           </div>
         </CardContent>

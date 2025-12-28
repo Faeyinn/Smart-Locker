@@ -68,7 +68,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    const publicPaths = ["/login", "/register", "/"];
+    // Public paths that don't require authentication
+    const publicPaths = [
+      "/login",
+      "/register",
+      "/",
+      "/features",
+      "/about",
+      "/contact",
+      "/privacy-policy",
+      "/terms-of-service",
+      "/cookie-policy",
+    ];
     const authRedirectPaths = ["/login", "/register"]; // Only redirect from these if logged in
     const isPublicPath = publicPaths.includes(pathname);
     const shouldRedirectIfAuth = authRedirectPaths.includes(pathname);
