@@ -26,10 +26,18 @@ void loop() {
   if (qrReader.receiveQrCode(&qrData, 100)) {
     if (qrData.valid) {
       String token = String((char*)qrData.payload);
-      Serial.println("QR Detected: " + token);
 
+      // ===== DEBUG ESP32-CAM =====
+      Serial.print("[ESP32-CAM] QR Detected: ");
+      Serial.println(token);
+
+      // Kirim token ke ESP32 utama
       camSerial.println(token);
-      delay(2000);
+      Serial.println("[ESP32-CAM] Token sent via UART");
+
+      delay(2000);  // debounce
+    } else {
+      Serial.println("[ESP32-CAM] QR invalid or empty");
     }
   }
 }

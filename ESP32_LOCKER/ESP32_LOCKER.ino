@@ -2,48 +2,94 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <ctype.h>
 
+/* ===== RELAY (AKTIF LOW) ===== */
 #define RELAY_1 25
 #define RELAY_2 26
 
+/* ===== WIFI ===== */
 const char* ssid = "UNAND";
 const char* password = "HardiknasDiAndalas";
+
+/* ===== API ===== */
 const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
+
+/* ===== UART ESP32 <-> ESP32-CAM ===== */
+#define UART_RX 16
+#define UART_TX 17
+
+/* ===== PARAMETER VALIDASI TOKEN ===== */
+#define MIN_TOKEN_LENGTH 6
 
 void setup() {
   Serial.begin(115200);
-  Serial2.begin(9600, SERIAL_8N1, 16, 17);
 
+  // UART ke ESP32-CAM
+  Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+
+  // Relay setup
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
   digitalWrite(RELAY_1, HIGH);
   digitalWrite(RELAY_2, HIGH);
 
+  // WiFi
   WiFi.begin(ssid, password);
-  Serial.print("Connecting WiFi");
+  Serial.print("[ESP32] Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nWiFi Connected");
+  Serial.println("\n[ESP32] WiFi Connected");
 }
 
 void loop() {
-  if (Serial2.available()) {
-    String token = Serial2.readStringUntil('\n');
-    token.trim();
+  if (!Serial2.available()) return;
 
-    Serial.println("Token Received: " + token);
-    verifyQR(token);
+  String token = Serial2.readStringUntil('\n');
+  token.trim();
+
+  // ===== DEBUG RAW UART =====
+  Serial.print("[ESP32] RAW UART received: [");
+  Serial.print(token);
+  Serial.println("]");
+
+  // ===== FILTER NOISE UART =====
+  if (!isValidToken(token)) {
+    Serial.println("[ESP32] Token invalid, discarded");
+    return;
   }
+
+  Serial.println("[ESP32] Token valid: " + token);
+
+  // ===== KIRIM KE SERVER =====
+  verifyQR(token);
+}
+
+bool isValidToken(String token) {
+  if (token.length() < MIN_TOKEN_LENGTH) return false;
+
+  for (int i = 0; i < token.length(); i++) {
+    if (isalnum(token[i])) return true;
+  }
+  return false;
 }
 
 void verifyQR(String token) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[ESP32] WiFi not connected");
+    return;
+  }
+
   WiFiClientSecure client;
   client.setInsecure();
 
   HTTPClient https;
-  if (!https.begin(client, serverUrl)) return;
+  if (!https.begin(client, serverUrl)) {
+    Serial.println("[ESP32] HTTPS begin failed");
+    return;
+  }
 
   https.addHeader("Content-Type", "application/json");
 
@@ -53,11 +99,17 @@ void verifyQR(String token) {
   String body;
   serializeJson(doc, body);
 
-  int code = https.POST(body);
+  Serial.println("[ESP32] Sending POST request: " + body);
 
-  if (code == 200) {
+  int httpCode = https.POST(body);
+
+  if (httpCode == 200) {
     String response = https.getString();
+    Serial.println("[ESP32] Response: " + response);
     handleResponse(response);
+  } else {
+    Serial.print("[ESP32] HTTP Error: ");
+    Serial.println(httpCode);
   }
 
   https.end();
@@ -65,20 +117,26 @@ void verifyQR(String token) {
 
 void handleResponse(String response) {
   StaticJsonDocument<200> doc;
-  if (deserializeJson(doc, response)) return;
+  if (deserializeJson(doc, response)) {
+    Serial.println("[ESP32] JSON parse failed");
+    return;
+  }
 
   String action = doc["action"];
   int lockerId = doc["lockerId"];
 
+  Serial.println("[ESP32] Action: " + action + " | Locker ID: " + String(lockerId));
+
   if (action == "OPEN") {
     if (lockerId == 1) openLocker(RELAY_1);
-    if (lockerId == 2) openLocker(RELAY_2);
+    else if (lockerId == 2) openLocker(RELAY_2);
   }
 }
 
 void openLocker(int pin) {
-  Serial.println("OPEN LOCKER");
+  Serial.println("[ESP32] OPEN LOCKER on pin " + String(pin));
   digitalWrite(pin, LOW);
   delay(5000);
   digitalWrite(pin, HIGH);
+  Serial.println("[ESP32] Locker closed");
 }
