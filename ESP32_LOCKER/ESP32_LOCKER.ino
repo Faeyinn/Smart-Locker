@@ -3,24 +3,19 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-/* ===== WIFI ===== */
-const char* ssid = "UNAND";
-const char* password = "HardiknasDiAndalas";
-
-/* ===== API ===== */
-const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
-
-/* ===== RELAY (AKTIF LOW) ===== */
 #define RELAY_1 25
 #define RELAY_2 26
 
+const char* ssid = "UNAND";
+const char* password = "HardiknasDiAndalas";
+const char* serverUrl = "https://anja-unprating-unsettlingly.ngrok-free.dev/api/verify-qr";
+
 void setup() {
   Serial.begin(115200);
-  Serial2.begin(9600, SERIAL_8N1, 13, 12);
+  Serial2.begin(9600, SERIAL_8N1, 16, 17);
 
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
-
   digitalWrite(RELAY_1, HIGH);
   digitalWrite(RELAY_2, HIGH);
 
@@ -38,7 +33,7 @@ void loop() {
     String token = Serial2.readStringUntil('\n');
     token.trim();
 
-    Serial.println("QR Received: " + token);
+    Serial.println("Token Received: " + token);
     verifyQR(token);
   }
 }
